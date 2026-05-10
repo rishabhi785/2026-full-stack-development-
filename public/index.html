@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TASK & EARN | Lucky 3D Wheel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { box-sizing: border-box; font-family: 'Space Grotesk', sans-serif; }
+        body {
+            background: radial-gradient(circle at top, #0f0c1b 0%, #05020c 100%);
+            color: #ffffff;
+            margin: 0;
+            padding: 15px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+        }
+        .main-card {
+            max-width: 420px;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 28px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 30px 20px;
+            box-shadow: 0 40px 100px rgba(0, 0, 0, 0.9);
+            text-align: center;
+            position: relative;
+        }
+        .badge {
+            background: linear-gradient(90deg, #00f2fe, #4facfe);
+            color: #000;
+            font-weight: 700;
+            font-size: 11px;
+            padding: 6px 14px;
+            border-radius: 30px;
+            display: inline-block;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        h1 {
+            font-size: 34px;
+            font-weight: 700;
+            margin: 0 0 5px 0;
+            background: linear-gradient(135deg, #ffffff, #a5a5a5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .desc { color: #8c89a0; font-size: 13px; margin-bottom: 25px; }
+        
+        /* Stats dashboard */
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 25px;
+        }
+        .stat-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 18px;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-align: left;
+        }
+        .stat-item i {
+            font-size: 18px;
+            width: 36px;
+            height: 36px;
+            background: rgba(255,255,255,0.05);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+        }
+        .stat-item.balance i { color: #00ff66; }
+        .stat-item.spins i { color: #ffd700; }
+        .stat-item p { margin: 0; font-size: 11px; color: #8c89a0; text-transform: uppercase; }
+        .stat-item h3 { margin: 2px 0 0 0; font-size: 18px; font-weight: 700; }
+
+        /* 3D Spin Wheel */
+        .wheel-outer {
+            position: relative;
+            width: 290px;
+            height: 290px;
+            margin: 0 auto 30px auto;
+            border-radius: 50%;
+            padding: 10px;
+            background: #090314;
+            box-shadow: 0 0 40px rgba(0, 242, 254, 0.2), inset 0 2px 8px rgba(255,255,255,0.1);
+        }
+        .wheel {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: conic-gradient(
+                #140b2d 0deg 60deg, 
+                #1b103a 60deg 120deg, 
+                #140b2d 120deg 180deg, 
+                #1b103a 180deg 240deg, 
+                #140b2d 240deg 300deg, 
+                #1b103a 300deg 360deg
+            );
+            border: 4px solid #291a54;
+            transition: transform 5s cubic-bezier(0.15, 0.85, 0.1, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        .wheel-segment {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding-top: 30px;
+            font-size: 18px;
+            font-weight: 700;
+            transform-origin: 50% 50%;
+        }
+        /* Rotations & Exact Fixed Prizes Printed */
+        .seg0 { transform: rotate(30deg); color: #00ff66; } /* ₹0.05 */
+        .seg1 { transform: rotate(90deg); color: #ffd700; } /* ₹1.00 */
+        .seg2 { transform: rotate(150deg); color: #ff007a; } /* ₹0.10 */
+        .seg3 { transform: rotate(210deg); color: #00f2fe; } /* ₹2.00 */
+        .seg4 { transform: rotate(270deg); color: #ff9f00; } /* ₹0.15 */
+        .seg5 { transform: rotate(330deg); color: #a1ff00; } /* ₹5.00 */
+
+        .wheel-center-cap {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50px;
+            height: 50px;
+            background: radial-gradient(circle, #2a154d, #0d061a);
+            border-radius: 50%;
+            z-index: 10;
+            border: 3px solid #00f2fe;
+            box-shadow: 0 0 20px rgba(0, 242, 254, 0.6);
+        }
+        .pointer {
+            position: absolute;
+            top: -5px; left: 50%;
+            transform: translateX(-50%);
+            width: 0; height: 0;
+            border-left: 14px solid transparent;
+            border-right: 14px solid transparent;
+            border-top: 26px solid #ff007a;
+            z-index: 12;
+            filter: drop-shadow(0 4px 10px rgba(255,0,122,0.8));
+        }
+
+        .btn-spin {
+            width: 100%;
+            background: linear-gradient(135deg, #00f2fe, #4facfe);
+            color: #000;
+            border: none;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 700;
+            border-radius: 18px;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 0 10px 25px rgba(0, 242, 254, 0.3);
+            transition: 0.2s;
+        }
+        .btn-spin:active { transform: translateY(2px); }
+
+        /* Security Guarded Popup (Website Lock) */
+        .guard-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(10, 5, 23, 0.95);
+            backdrop-filter: blur(20px);
+            z-index: 100;
+            border-radius: 28px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 30px;
+        }
+        .lock-badge {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: rgba(255, 71, 87, 0.1);
+            color: #ff4757;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            margin-bottom: 25px;
+            border: 1px solid rgba(255, 71, 87, 0.2);
+            animation: pulse-lock 1.5s infinite;
+        }
+        @keyframes pulse-lock {
+            0% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.4); }
+            70% { box-shadow: 0 0 0 15px rgba(255, 71, 87, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
+        }
+        .guard-overlay h2 { font-size: 24px; font-weight: 700; margin: 0 0 10px 0; color: #fff; }
+        .guard-overlay p { color: #8c89a0; font-size: 13px; margin: 0 0 25px 0; line-height: 1.5; }
+        .btn-verify {
+            background: #24a1de;
+            color: #fff;
+            padding: 14px 28px;
+            border-radius: 14px;
+            font-weight: 700;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 8px 25px rgba(36, 161, 222, 0.4);
+            margin-bottom: 15px;
+        }
+
+        /* Refer System Box */
+        .refer-box {
+            margin-top: 25px;
+            background: rgba(255,255,255,0.01);
+            border: 1px solid rgba(255,255,255,0.04);
+            border-radius: 18px;
+            padding: 15px;
+            text-align: left;
+        }
+        .refer-box p { margin: 0 0 8px 0; font-size: 12px; color: #8c89a0; }
+        .link-container {
+            display: flex;
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.05);
+            overflow: hidden;
+        }
+        #ref-link {
+            padding: 10px;
+            font-size: 11px;
+            color: #00f2fe;
+            align-self: center;
+            word-break: break-all;
+            flex-grow: 1;
+        }
+        .copy-btn {
+            background: rgba(255,255,255,0.05);
+            border: none;
+            color: #fff;
+            padding: 10px 15px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<div class="main-card">
+    <div class="guard-overlay" id="guard-overlay">
+        <div class="lock-badge"><i class="fa-solid fa-lock"></i></div>
+        <h2>Join Telegram to Access</h2>
+        <p>You must join our official Telegram channel <b>TASK AND EARN</b> to unlock the spin wheel and claim your rewards.</p>
+        <a href="https://t.me/Taskies_bot?start=website" target="_blank" class="btn-verify" onclick="startCheckLoop()">
+            <i class="fa-brands fa-telegram"></i> Unlock Via Telegram Bot
+        </a>
+        <p style="font-size: 11px; color: #ff4757;"><i class="fa-solid fa-triangle-exclamation"></i> DO NOT close this tab. It auto-unlocks!</p>
+    </div>
+
+    <div class="badge">🎁 Instant Withdrawal System</div>
+    <h1>Lucky Draw</h1>
+    <p class="desc">Refer your friends & spin the 3D wheel to earn real rewards.</p>
+
+    <div class="dashboard">
+        <div class="stat-item balance">
+            <i class="fa-solid fa-wallet"></i>
+            <div>
+                <p>Balance</p>
+                <h3>₹<span id="balance">0.00</span></h3>
+            </div>
+        </div>
+        <div class="stat-item spins">
+            <i class="fa-solid fa-rotate-right"></i>
+            <div>
+                <p>Spins Left</p>
+                <h3><span id="spins">1</span></h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="wheel-outer">
+        <div class="pointer"></div>
+        <div class="wheel-center-cap"></div>
+        <div class="wheel" id="wheel">
+            <div class="wheel-segment seg0">₹0.05</div>
+            <div class="wheel-segment seg1">₹1.00</div>
+            <div class="wheel-segment seg2">₹0.10</div>
+            <div class="wheel-segment seg3">₹2.00</div>
+            <div class="wheel-segment seg4">₹0.15</div>
+            <div class="wheel-segment seg5">₹5.00</div>
+        </div>
+    </div>
+
+    <button class="btn-spin" onclick="spinWheel()">Spin Now</button>
+
+    <div class="refer-box">
+        <p><i class="fa-solid fa-share-nodes"></i> Your Referral Link (Get +1 Spin per joined friend):</p>
+        <div class="link-container">
+            <div id="ref-link">Verifying Account...</div>
+            <button class="copy-btn" onclick="copyLink()"><i class="fa-solid fa-copy"></i></button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // System automatically generates a simulation Telegram User ID for demo
+    // If running in production, retrieve from Bot redirect URL params (?telegram_id=xxxxx)
+    const urlParams = new URLSearchParams(window.location.search);
+    let tgUser = urlParams.get('telegram_id') || localStorage.getItem('tg_user_id');
+    const refBy = urlParams.get('ref');
+
+    if (!tgUser) {
+        tgUser = 'User_' + Math.floor(100000 + Math.random() * 900000);
+        localStorage.setItem('tg_user_id', tgUser);
+    }
+
+    let isSpinning = false;
+    let checkInterval = null;
+
+    // Authenticate and Verify Membership with Server
+    async function authUser() {
+        try {
+            const res = await fetch('/api/auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ telegramId: tgUser, referrerId: refBy })
+            });
+            const data = await responseData = await res.json();
+            
+            if (responseData.is_joined) {
+                // Unlock Page
+                document.getElementById('guard-overlay').style.display = 'none';
+                document.getElementById('balance').innerText = responseData.balance.toFixed(2);
+                document.getElementById('spins').innerText = responseData.spins;
+                document.getElementById('ref-link').innerText = window.location.origin + window.location.pathname + "?ref=" + tgUser;
+                if (checkInterval) clearInterval(checkInterval);
+            } else {
+                // Stay Locked
+                document.getElementById('guard-overlay').style.display = 'flex';
+            }
+        } catch (err) {
+            console.error('Server connection failed.', err);
+        }
+    }
+
+    // Auto check if they joined after clicking the Telegram Bot button
+    function startCheckLoop() {
+        if (checkInterval) clearInterval(checkInterval);
+        checkInterval = setInterval(authUser, 4000); // Check database updates every 4 seconds
+    }
+
+    // Spin Wheel Handler
+    async function spinWheel() {
+        if (isSpinning) return;
+        
+        try {
+            const res = await fetch('/api/spin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ telegramId: tgUser })
+            });
+            const data = await res.json();
+
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+
+            isSpinning = true;
+            const wheel = document.getElementById('wheel');
+            
+            // Total segments: 6. Each segment is 60deg.
+            // Target segment rotation formula
+            const targetDeg = (360 - (data.targetIndex * 60)) + 2160; 
+            wheel.style.transform = `rotate(${targetDeg}deg)`;
+
+            setTimeout(() => {
+                isSpinning = false;
+                document.getElementById('balance').innerText = data.newBalance.toFixed(2);
+                document.getElementById('spins').innerText = data.newSpins;
+                alert(`🎉 Congratulations! You won ₹${data.prize.toFixed(2)}!`);
+            }, 5000);
+
+        } catch (err) {
+            alert('Spin error. Please try again!');
+        }
+    }
+
+    function copyLink() {
+        const linkText = document.getElementById('ref-link').innerText;
+        navigator.clipboard.writeText(linkText);
+        alert('Referral link copied to clipboard!');
+    }
+
+    // Initial Auth Load
+    authUser();
+</script>
+
+</body>
+                                  </html>
+                                  
