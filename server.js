@@ -1,27 +1,30 @@
-
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const bodyParser = require('body-parser');
 const fetch = require('node-fetch');
 const path = require('path');
+const { Telegraf, Markup } = require('telegraf');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configs
-const BOT_TOKEN = '8746177274:AAFcEAj_F8p-rtHGOcWegcp_DQ4_cS1bAzU';
-const CHANNEL_USERNAME = '@task_and_earn_online'; 
+// Configs from Environment Variables
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const CHANNEL_USERNAME = process.env.CHANNEL_USERNAME; // @task_and_earn_online
+const WEBSITE_URL = process.env.WEBSITE_URL; // Aapka Render URL (e.g., https://xyz.onrender.com)
+
+// Initialize Bot
+const bot = new Telegraf(BOT_TOKEN);
 
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Database Setup (SQLite)
+// Database Setup
 const db = new sqlite3.Database('./database.db', (err) => {
     if (err) console.error('Database connection error:', err);
     else console.log('Connected to SQLite Database.');
 });
 
-// Create tables
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS users (
         telegram_id TEXT PRIMARY KEY,
@@ -32,38 +35,106 @@ db.serialize(() => {
     )`);
 });
 
-// Helper function to check if user joined Telegram Channel
+// Helper: Check Telegram Membership
 async function checkTelegramMembership(userId) {
     try {
         const url = `https://api.telegram.org/bot${BOT_TOKEN}/getChatMember?chat_id=${CHANNEL_USERNAME}&user_id=${userId}`;
         const response = await fetch(url);
         const data = await response.json();
-        
         if (data.ok) {
             const status = data.result.status;
-            // member, administrator, or creator means they are in the channel
             return ['member', 'administrator', 'creator'].includes(status);
         }
         return false;
     } catch (error) {
-        console.error('Error verifying Telegram membership:', error);
         return false;
     }
 }
 
-// Endpoint 1: User Login & Register with Invite Logic
+// ================= BOT LOGIC =================
+
+bot.start(async (ctx) => {
+    const tgUser = ctx.from.id.toString();
+    const startPayload = ctx.payload; // For referral links inside Telegram (e.g., /start ref_12345)
+    
+    const isJoined = await checkTelegramMembership(tgUser);
+
+    db.get('SELECT * FROM users WHERE telegram_id = ?', [tgUser], (err, user) => {
+        if (err) return;
+
+        if (!user) {
+            let referrerId = null;
+            if (startPayload && startPayload.startsWith('ref_')) {
+                referrerId = startPayload.replace('ref_', '');
+                if (referrerId === tgUser) referrerId = null;
+            }
+
+            db.run(
+                'INSERT INTO users (telegram_id, balance, spins, referred_by, is_joined) VALUES (?, 0.00, 1, ?, ?)',
+                [tgUser, referrerId, isJoined ? 1 : 0],
+                function(err) {
+                    if (!err && referrerId && isJoined) {
+                        db.run('UPDATE users SET spins = spins + 1 WHERE telegram_id = ?', [referrerId]);
+                    }
+                }
+            );
+        } else {
+            db.run('UPDATE users SET is_joined = ? WHERE telegram_id = ?', [isJoined ? 1 : 0, tgUser]);
+        }
+    });
+
+    if (isJoined) {
+        return ctx.reply(
+            `🎉 Welcome back to TASK AND EARN!\n\nYour account is fully verified. Click the button below to open the 3D Spin Wheel and earn real money!`,
+            Markup.inlineKeyboard([
+                [Markup.button.webApp('🎡 Open Spin App', `${WEBSITE_URL}/?telegram_id=${tgUser}`)]
+            ])
+        );
+    } else {
+        return ctx.reply(
+            `⚠️ Access Denied!\n\nYou must join our official Telegram Channel to use this app.\n\n1. Join: ${CHANNEL_USERNAME}\n2. After joining, click "Verify & Start" below!`,
+            Markup.inlineKeyboard([
+                [Markup.button.url('📢 Join Channel', `https://t.me/${CHANNEL_USERNAME.replace('@', '')}`)],
+                [Markup.button.callback('✅ Verify & Start', 'verify_user')]
+            ])
+        );
+    }
+});
+
+// Bot callback for verification button
+bot.action('verify_user', async (ctx) => {
+    const tgUser = ctx.from.id.toString();
+    const isJoined = await checkTelegramMembership(tgUser);
+
+    if (isJoined) {
+        db.run('UPDATE users SET is_joined = 1 WHERE telegram_id = ?', [tgUser]);
+        await ctx.answerCbQuery('Success! Account Verified. 🎉');
+        return ctx.editMessageText(
+            `🎉 Verification Successful!\n\nYou can now open the spin wheel app and start earning.`,
+            Markup.inlineKeyboard([
+                [Markup.button.webApp('🎡 Open Spin App', `${WEBSITE_URL}/?telegram_id=${tgUser}`)]
+            ])
+        );
+    } else {
+        return ctx.answerCbQuery('❌ You have not joined the channel yet! Please join and try again.', { show_alert: true });
+    }
+});
+
+// Launch Bot
+bot.launch().then(() => console.log('Telegram Bot is running...'));
+
+// ================= API ENDPOINTS =================
+
 app.post('/api/auth', async (req, res) => {
-    const { telegramId, referrerId } = req.body;
+    const { telegramId } = req.body;
     if (!telegramId) return res.status(400).json({ error: 'Telegram ID is required' });
 
-    // 1. Real-time check Telegram status
     const isJoined = await checkTelegramMembership(telegramId);
     
     db.get('SELECT * FROM users WHERE telegram_id = ?', [telegramId], (err, user) => {
         if (err) return res.status(500).json({ error: err.message });
 
         if (user) {
-            // User exists, update status
             db.run('UPDATE users SET is_joined = ? WHERE telegram_id = ?', [isJoined ? 1 : 0, telegramId]);
             return res.json({ 
                 telegram_id: telegramId, 
@@ -72,80 +143,40 @@ app.post('/api/auth', async (req, res) => {
                 is_joined: isJoined 
             });
         } else {
-            // New User Registration
-            const initialSpins = 1;
-            let finalReferredBy = null;
-
-            // Simple self-refer check
-            if (referrerId && referrerId !== telegramId) {
-                finalReferredBy = referrerId;
-            }
-
-            db.run(
-                'INSERT INTO users (telegram_id, balance, spins, referred_by, is_joined) VALUES (?, 0.00, ?, ?, ?)',
-                [telegramId, initialSpins, finalReferredBy, isJoined ? 1 : 0],
-                function(err) {
-                    if (err) return res.status(500).json({ error: err.message });
-                    
-                    // If referred by someone, give them +1 Spin on real join
-                    if (finalReferredBy && isJoined) {
-                        db.run('UPDATE users SET spins = spins + 1 WHERE telegram_id = ?', [finalReferredBy]);
-                    }
-
-                    res.json({ 
-                        telegram_id: telegramId, 
-                        balance: 0.00, 
-                        spins: initialSpins, 
-                        is_joined: isJoined 
-                    });
-                }
-            );
+            return res.json({ telegram_id: telegramId, balance: 0.00, spins: 0, is_joined: false });
         }
     });
 });
 
-// Endpoint 2: Safe Server-Side Spin Logic
-// Yahan fixed rewards hain ₹ wale aur fixed mathematically weighted probability hai taki kam paise hi milein!
 app.post('/api/spin', async (req, res) => {
     const { telegramId } = req.body;
     
-    // Check if user is verified member first
     const isJoined = await checkTelegramMembership(telegramId);
     if (!isJoined) {
-        return res.status(403).json({ error: 'Access Denied. You are not a channel member!' });
+        return res.status(403).json({ error: 'Access Denied. Join channel first!' });
     }
 
     db.get('SELECT spins, balance FROM users WHERE telegram_id = ?', [telegramId], (err, user) => {
         if (err || !user) return res.status(500).json({ error: 'User not found' });
         if (user.spins <= 0) return res.status(400).json({ error: 'No spins left' });
-
-        // Wheel visual options index:
-        // [Index 0: ₹0.05, Index 1: ₹1.00, Index 2: ₹0.10, Index 3: ₹2.00, Index 4: ₹0.15, Index 5: ₹5.00]
-        // Safe algorithm: High amounts (₹1, ₹2, ₹5) are shown on wheel, but probability (chance) is almost 0%.
-        // 98% times landing on ₹0.05, ₹0.10, or ₹0.15.
         
         const roll = Math.random() * 100;
-        let selectedIndex = 0; // Default ₹0.05
+        let selectedIndex = 0; 
         let prizeMoney = 0.05;
 
         if (roll < 45) {
-            // 45% chance for ₹0.05
             selectedIndex = 0;
             prizeMoney = 0.05;
         } else if (roll < 85) {
-            // 40% chance for ₹0.10
             selectedIndex = 2;
             prizeMoney = 0.10;
         } else if (roll < 98) {
-            // 13% chance for ₹0.15
             selectedIndex = 4;
             prizeMoney = 0.15;
         } else if (roll < 99) {
-            // 1% super rare chance for ₹1.00
             selectedIndex = 1;
             prizeMoney = 1.00;
         } else {
-            // 1% super rare chance for ₹2.00
             selectedIndex = 3;
             prizeMoney = 2.00;
         }
@@ -158,7 +189,7 @@ app.post('/api/spin', async (req, res) => {
             
             res.json({
                 success: true,
-                targetIndex: selectedIndex, // Frontend listens to this index to spin properly
+                targetIndex: selectedIndex, 
                 prize: prizeMoney,
                 newBalance: newBalance,
                 newSpins: newSpins
@@ -167,7 +198,11 @@ app.post('/api/spin', async (req, res) => {
     });
 });
 
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
-                      
+
+app.listen(PORT, () => {
+    console.log(`Web Server is running on port ${PORT}`);
+});
+            
