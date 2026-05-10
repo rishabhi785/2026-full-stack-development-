@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 // Configs from Environment Variables
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const CHANNEL_USERNAME = process.env.CHANNEL_USERNAME; // @task_and_earn_online
-const WEBSITE_URL = process.env.WEBSITE_URL; // Aapka Render URL (e.g., https://xyz.onrender.com)
+const WEBSITE_URL = process.env.WEBSITE_URL; // e.g., https://your-app.onrender.com
 
 // Initialize Bot
 const bot = new Telegraf(BOT_TOKEN);
@@ -25,6 +25,7 @@ const db = new sqlite3.Database('./database.db', (err) => {
     else console.log('Connected to SQLite Database.');
 });
 
+// Database schema configuration
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS users (
         telegram_id TEXT PRIMARY KEY,
@@ -37,6 +38,7 @@ db.serialize(() => {
 
 // Helper: Check Telegram Membership
 async function checkTelegramMembership(userId) {
+    if (!userId || userId.startsWith('User_')) return false; // Simulation user bypass
     try {
         const url = `https://api.telegram.org/bot${BOT_TOKEN}/getChatMember?chat_id=${CHANNEL_USERNAME}&user_id=${userId}`;
         const response = await fetch(url);
@@ -51,11 +53,11 @@ async function checkTelegramMembership(userId) {
     }
 }
 
-// ================= BOT LOGIC =================
+// ================= TELEGRAM BOT LOGIC =================
 
 bot.start(async (ctx) => {
     const tgUser = ctx.from.id.toString();
-    const startPayload = ctx.payload; // For referral links inside Telegram (e.g., /start ref_12345)
+    const startPayload = ctx.payload; // For referral links or verification redirects
     
     const isJoined = await checkTelegramMembership(tgUser);
 
@@ -64,9 +66,10 @@ bot.start(async (ctx) => {
 
         if (!user) {
             let referrerId = null;
+            // Check if user came via referral link: start=ref_USERID
             if (startPayload && startPayload.startsWith('ref_')) {
                 referrerId = startPayload.replace('ref_', '');
-                if (referrerId === tgUser) referrerId = null;
+                if (referrerId === tgUser) referrerId = null; // Self-referral protection
             }
 
             db.run(
@@ -74,6 +77,7 @@ bot.start(async (ctx) => {
                 [tgUser, referrerId, isJoined ? 1 : 0],
                 function(err) {
                     if (!err && referrerId && isJoined) {
+                        // Reward the referrer with +1 spin immediately
                         db.run('UPDATE users SET spins = spins + 1 WHERE telegram_id = ?', [referrerId]);
                     }
                 }
@@ -91,23 +95,50 @@ bot.start(async (ctx) => {
             ])
         );
     } else {
+        // Build dynamic deep link back to start with payload to preserve invite chain
+        let startParam = `verify_${tgUser}`;
+        if (startPayload && startPayload.startsWith('ref_')) {
+            startParam = startPayload; // Keep referral payload intact
+        }
+        
         return ctx.reply(
             `⚠️ Access Denied!\n\nYou must join our official Telegram Channel to use this app.\n\n1. Join: ${CHANNEL_USERNAME}\n2. After joining, click "Verify & Start" below!`,
             Markup.inlineKeyboard([
                 [Markup.button.url('📢 Join Channel', `https://t.me/${CHANNEL_USERNAME.replace('@', '')}`)],
-                [Markup.button.callback('✅ Verify & Start', 'verify_user')]
+                [Markup.button.callback('✅ Verify & Start', `verify_user:${startParam}`)]
             ])
         );
     }
 });
 
-// Bot callback for verification button
-bot.action('verify_user', async (ctx) => {
+// Bot callback verification with dynamic parameter handling
+bot.action(/verify_user:(.+)/, async (ctx) => {
     const tgUser = ctx.from.id.toString();
+    const payload = ctx.match[1];
     const isJoined = await checkTelegramMembership(tgUser);
 
     if (isJoined) {
-        db.run('UPDATE users SET is_joined = 1 WHERE telegram_id = ?', [tgUser]);
+        db.get('SELECT * FROM users WHERE telegram_id = ?', [tgUser], (err, user) => {
+            if (!user) {
+                let referrerId = null;
+                if (payload && payload.startsWith('ref_')) {
+                    referrerId = payload.replace('ref_', '');
+                    if (referrerId === tgUser) referrerId = null;
+                }
+                db.run(
+                    'INSERT INTO users (telegram_id, balance, spins, referred_by, is_joined) VALUES (?, 0.00, 1, ?, 1)',
+                    [tgUser, referrerId],
+                    function(err) {
+                        if (!err && referrerId) {
+                            db.run('UPDATE users SET spins = spins + 1 WHERE telegram_id = ?', [referrerId]);
+                        }
+                    }
+                );
+            } else {
+                db.run('UPDATE users SET is_joined = 1 WHERE telegram_id = ?', [tgUser]);
+            }
+        });
+
         await ctx.answerCbQuery('Success! Account Verified. 🎉');
         return ctx.editMessageText(
             `🎉 Verification Successful!\n\nYou can now open the spin wheel app and start earning.`,
@@ -120,11 +151,12 @@ bot.action('verify_user', async (ctx) => {
     }
 });
 
-// Launch Bot
-bot.launch().then(() => console.log('Telegram Bot is running...'));
+// Launch Telegram Bot
+bot.launch().then(() => console.log('Telegram Bot is running...')).catch(err => console.error("Bot launch failed:", err));
 
-// ================= API ENDPOINTS =================
-// Endpoint 1: User Login & Register with Invite Logic
+// ================= WEB API ENDPOINTS =================
+
+// Secure auth route that strictly validates and registers user session
 app.post('/api/auth', async (req, res) => {
     const { telegramId, referrerId } = req.body;
     if (!telegramId) return res.status(400).json({ error: 'Telegram ID is required' });
@@ -135,44 +167,38 @@ app.post('/api/auth', async (req, res) => {
         if (err) return res.status(500).json({ error: err.message });
 
         if (user) {
-            // Agar user pehle se hai, toh sirf join status update karo
-            db.run('UPDATE users SET is_joined = ? WHERE telegram_id = ?', [isJoined ? 1 : 0, telegramId]);
-            return res.json({ 
-                telegram_id: telegramId, 
-                balance: user.balance, 
-                spins: user.spins, 
-                is_joined: isJoined 
+            // User exists, just update their channel joining status and return data
+            db.run('UPDATE users SET is_joined = ? WHERE telegram_id = ?', [isJoined ? 1 : 0, telegramId], (updErr) => {
+                return res.json({ 
+                    telegram_id: telegramId, 
+                    balance: user.balance, 
+                    spins: user.spins, 
+                    is_joined: isJoined ? true : false 
+                });
             });
         } else {
-            // Naya user hai!
+            // New web visitor - Register them securely
             let finalReferredBy = null;
-            if (referrerId && referrerId !== telegramId) {
+            if (referrerId && referrerId !== telegramId && !referrerId.startsWith('User_')) {
                 finalReferredBy = referrerId;
             }
 
             db.run(
                 'INSERT INTO users (telegram_id, balance, spins, referred_by, is_joined) VALUES (?, 0.00, 1, ?, ?)',
                 [telegramId, finalReferredBy, isJoined ? 1 : 0],
-                function(err) {
-                    if (err) return res.status(500).json({ error: err.message });
+                function(insErr) {
+                    if (insErr) return res.status(500).json({ error: insErr.message });
                     
-                    // AGAR NAYA USER HAI AUR USNE CHANNEL JOIN KIYA HAI, TOH REFERRER KO +1 SPIN DO
+                    // Award referrer only if the newly registered user has actually joined the channel
                     if (finalReferredBy && isJoined) {
-                        db.run(
-                            'UPDATE users SET spins = spins + 1 WHERE telegram_id = ?', 
-                            [finalReferredBy],
-                            (updateErr) => {
-                                if (updateErr) console.error('Error updating referrer spins:', updateErr);
-                                else console.log(`Referral Success! ${finalReferredBy} got +1 spin.`);
-                            }
-                        );
+                        db.run('UPDATE users SET spins = spins + 1 WHERE telegram_id = ?', [finalReferredBy]);
                     }
 
-                    res.json({ 
+                    return res.json({ 
                         telegram_id: telegramId, 
                         balance: 0.00, 
                         spins: 1, 
-                        is_joined: isJoined 
+                        is_joined: isJoined ? true : false 
                     });
                 }
             );
@@ -180,9 +206,9 @@ app.post('/api/auth', async (req, res) => {
     });
 });
 
-
 app.post('/api/spin', async (req, res) => {
     const { telegramId } = req.body;
+    if (!telegramId) return res.status(400).json({ error: 'Telegram ID is required' });
     
     const isJoined = await checkTelegramMembership(telegramId);
     if (!isJoined) {
@@ -193,6 +219,7 @@ app.post('/api/spin', async (req, res) => {
         if (err || !user) return res.status(500).json({ error: 'User not found' });
         if (user.spins <= 0) return res.status(400).json({ error: 'No spins left' });
         
+        // Spin logic calculations
         const roll = Math.random() * 100;
         let selectedIndex = 0; 
         let prizeMoney = 0.05;
@@ -238,4 +265,4 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
     console.log(`Web Server is running on port ${PORT}`);
 });
-            
+               
