@@ -124,9 +124,9 @@ bot.action('verify_user', async (ctx) => {
 bot.launch().then(() => console.log('Telegram Bot is running...'));
 
 // ================= API ENDPOINTS =================
-
+// Endpoint 1: User Login & Register with Invite Logic
 app.post('/api/auth', async (req, res) => {
-    const { telegramId } = req.body;
+    const { telegramId, referrerId } = req.body;
     if (!telegramId) return res.status(400).json({ error: 'Telegram ID is required' });
 
     const isJoined = await checkTelegramMembership(telegramId);
@@ -135,6 +135,7 @@ app.post('/api/auth', async (req, res) => {
         if (err) return res.status(500).json({ error: err.message });
 
         if (user) {
+            // Agar user pehle se hai, toh sirf join status update karo
             db.run('UPDATE users SET is_joined = ? WHERE telegram_id = ?', [isJoined ? 1 : 0, telegramId]);
             return res.json({ 
                 telegram_id: telegramId, 
@@ -143,10 +144,42 @@ app.post('/api/auth', async (req, res) => {
                 is_joined: isJoined 
             });
         } else {
-            return res.json({ telegram_id: telegramId, balance: 0.00, spins: 0, is_joined: false });
+            // Naya user hai!
+            let finalReferredBy = null;
+            if (referrerId && referrerId !== telegramId) {
+                finalReferredBy = referrerId;
+            }
+
+            db.run(
+                'INSERT INTO users (telegram_id, balance, spins, referred_by, is_joined) VALUES (?, 0.00, 1, ?, ?)',
+                [telegramId, finalReferredBy, isJoined ? 1 : 0],
+                function(err) {
+                    if (err) return res.status(500).json({ error: err.message });
+                    
+                    // AGAR NAYA USER HAI AUR USNE CHANNEL JOIN KIYA HAI, TOH REFERRER KO +1 SPIN DO
+                    if (finalReferredBy && isJoined) {
+                        db.run(
+                            'UPDATE users SET spins = spins + 1 WHERE telegram_id = ?', 
+                            [finalReferredBy],
+                            (updateErr) => {
+                                if (updateErr) console.error('Error updating referrer spins:', updateErr);
+                                else console.log(`Referral Success! ${finalReferredBy} got +1 spin.`);
+                            }
+                        );
+                    }
+
+                    res.json({ 
+                        telegram_id: telegramId, 
+                        balance: 0.00, 
+                        spins: 1, 
+                        is_joined: isJoined 
+                    });
+                }
+            );
         }
     });
 });
+
 
 app.post('/api/spin', async (req, res) => {
     const { telegramId } = req.body;
