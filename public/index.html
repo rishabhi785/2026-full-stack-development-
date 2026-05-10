@@ -329,6 +329,18 @@
     let checkInterval = null;
 
     // Authenticate and Verify Membership with Server
+    // Dynamic Bot Link with User ID payload (e.g., https://t.me/Taskies_bot?start=ref_USERID)
+const botLink = document.getElementById('tg-bot-btn');
+if (botLink) {
+    if (refBy) {
+        // Agar koi kisi ke refer link se aaya hai
+        botLink.href = `https://t.me/Taskies_bot?start=ref_${refBy}`;
+    } else {
+        // Agar direct aaya hai
+        botLink.href = `https://t.me/Taskies_bot?start=verify_${tgUser}`;
+    }
+}
+    
     async function authUser() {
         try {
             const res = await fetch('/api/auth', {
