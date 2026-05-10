@@ -124,7 +124,7 @@
             font-weight: 700;
             transform-origin: 50% 50%;
         }
-        /* Rotations & Exact Fixed Prizes Printed */
+        /* Rotations */
         .seg0 { transform: rotate(30deg); color: #00ff66; } /* ₹0.05 */
         .seg1 { transform: rotate(90deg); color: #ffd700; } /* ₹1.00 */
         .seg2 { transform: rotate(150deg); color: #ff007a; } /* ₹0.10 */
@@ -176,8 +176,8 @@
         .guard-overlay {
             position: absolute;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(10, 5, 23, 0.95);
-            backdrop-filter: blur(20px);
+            background: rgba(10, 5, 23, 0.98);
+            backdrop-filter: blur(25px);
             z-index: 100;
             border-radius: 28px;
             display: flex;
@@ -258,7 +258,7 @@
 <body>
 
 <div class="main-card">
-    <div class="guard-overlay" id="guard-overlay">
+    <div class="guard-overlay" id="guard-overlay" style="display: flex;">
         <div class="lock-badge"><i class="fa-solid fa-lock"></i></div>
         <h2>Join Telegram to Access</h2>
         <p>You must join our official Telegram channel <b>TASK AND EARN</b> to unlock the spin wheel and claim your rewards.</p>
@@ -284,7 +284,7 @@
             <i class="fa-solid fa-rotate-right"></i>
             <div>
                 <p>Spins Left</p>
-                <h3><span id="spins">1</span></h3>
+                <h3><span id="spins">0</span></h3>
             </div>
         </div>
     </div>
@@ -315,31 +315,39 @@
 
 <script>
     const urlParams = new URLSearchParams(window.location.search);
-    let tgUser = urlParams.get('telegram_id') || localStorage.getItem('tg_user_id');
+    let tgUser = urlParams.get('telegram_id');
     const refBy = urlParams.get('ref');
 
-    // Default simulation if direct visit
-    if (!tgUser) {
-        tgUser = 'User_' + Math.floor(100000 + Math.random() * 900000);
+    // Strict Device Verification: Don't allow session overlaps.
+    if (tgUser) {
         localStorage.setItem('tg_user_id', tgUser);
     } else {
+        tgUser = localStorage.getItem('tg_user_id');
+    }
+
+    // Set fallback simulation only if absolutely no ID exists (even in cache)
+    if (!tgUser) {
+        tgUser = 'User_' + Math.floor(100000 + Math.random() * 900000);
         localStorage.setItem('tg_user_id', tgUser);
     }
 
     let isSpinning = false;
     let checkInterval = null;
 
-    // Set Dynamic Telegram Bot Link inside button
+    // Build the correct Bot Link dynamically on load
     const botLink = document.getElementById('tg-bot-btn');
     if (botLink) {
-        if (refBy) {
+        if (refBy && !refBy.startsWith('User_')) {
+            // If visiting via a friend's referral link
             botLink.href = `https://t.me/Taskies_bot?start=ref_${refBy}`;
         } else {
+            // Direct visit, regular channel verification link
             botLink.href = `https://t.me/Taskies_bot?start=verify_${tgUser}`;
         }
     }
     
     async function authUser() {
+        if (!tgUser) return;
         try {
             const res = await fetch('/api/auth', {
                 method: 'POST',
@@ -349,14 +357,13 @@
             const responseData = await res.json();
             
             if (responseData.is_joined) {
-                // Unlock Page immediately
+                // Remove lock overlay strictly on verified response
                 document.getElementById('guard-overlay').style.display = 'none';
                 document.getElementById('balance').innerText = responseData.balance.toFixed(2);
                 document.getElementById('spins').innerText = responseData.spins;
                 document.getElementById('ref-link').innerText = window.location.origin + window.location.pathname + "?ref=" + tgUser;
                 if (checkInterval) clearInterval(checkInterval);
             } else {
-                // Stay Locked
                 document.getElementById('guard-overlay').style.display = 'flex';
             }
         } catch (err) {
@@ -364,13 +371,13 @@
         }
     }
 
-    // Auto check if they joined after clicking the Telegram Bot button
+    // Check verification status periodically
     function startCheckLoop() {
         if (checkInterval) clearInterval(checkInterval);
-        checkInterval = setInterval(authUser, 4000); // Check database updates every 4 seconds
+        checkInterval = setInterval(authUser, 4000); // Check updates every 4 seconds
     }
 
-    // Spin Wheel Handler
+    // Spin Wheel logic
     async function spinWheel() {
         if (isSpinning) return;
         
@@ -389,8 +396,6 @@
 
             isSpinning = true;
             const wheel = document.getElementById('wheel');
-            
-            // Total segments: 6. Each segment is 60deg.
             const targetDeg = (360 - (data.targetIndex * 60)) + 2160; 
             wheel.style.transform = `rotate(${targetDeg}deg)`;
 
@@ -412,7 +417,7 @@
         alert('Referral link copied to clipboard!');
     }
 
-    // Initial Auth Load
+    // Load initial authentication state
     authUser();
 </script>
 
