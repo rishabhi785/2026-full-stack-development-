@@ -263,8 +263,8 @@
         <h2>Join Telegram to Access</h2>
         <p>You must join our official Telegram channel <b>TASK AND EARN</b> to unlock the spin wheel and claim your rewards.</p>
         <a href="#" id="tg-bot-btn" target="_blank" class="btn-verify" onclick="startCheckLoop()">
-    <i class="fa-brands fa-telegram"></i> Unlock Via Telegram Bot
-</a>
+            <i class="fa-brands fa-telegram"></i> Unlock Via Telegram Bot
+        </a>
         <p style="font-size: 11px; color: #ff4757;"><i class="fa-solid fa-triangle-exclamation"></i> DO NOT close this tab. It auto-unlocks!</p>
     </div>
 
@@ -314,32 +314,30 @@
 </div>
 
 <script>
-    // System automatically generates a simulation Telegram User ID for demo
-    // If running in production, retrieve from Bot redirect URL params (?telegram_id=xxxxx)
     const urlParams = new URLSearchParams(window.location.search);
     let tgUser = urlParams.get('telegram_id') || localStorage.getItem('tg_user_id');
     const refBy = urlParams.get('ref');
 
+    // Default simulation if direct visit
     if (!tgUser) {
         tgUser = 'User_' + Math.floor(100000 + Math.random() * 900000);
+        localStorage.setItem('tg_user_id', tgUser);
+    } else {
         localStorage.setItem('tg_user_id', tgUser);
     }
 
     let isSpinning = false;
     let checkInterval = null;
 
-    // Authenticate and Verify Membership with Server
-    // Dynamic Bot Link with User ID payload (e.g., https://t.me/Taskies_bot?start=ref_USERID)
-const botLink = document.getElementById('tg-bot-btn');
-if (botLink) {
-    if (refBy) {
-        // Agar koi kisi ke refer link se aaya hai
-        botLink.href = `https://t.me/Taskies_bot?start=ref_${refBy}`;
-    } else {
-        // Agar direct aaya hai
-        botLink.href = `https://t.me/Taskies_bot?start=verify_${tgUser}`;
+    // Set Dynamic Telegram Bot Link inside button
+    const botLink = document.getElementById('tg-bot-btn');
+    if (botLink) {
+        if (refBy) {
+            botLink.href = `https://t.me/Taskies_bot?start=ref_${refBy}`;
+        } else {
+            botLink.href = `https://t.me/Taskies_bot?start=verify_${tgUser}`;
+        }
     }
-}
     
     async function authUser() {
         try {
@@ -348,10 +346,10 @@ if (botLink) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ telegramId: tgUser, referrerId: refBy })
             });
-            const data = await responseData = await res.json();
+            const responseData = await res.json();
             
             if (responseData.is_joined) {
-                // Unlock Page
+                // Unlock Page immediately
                 document.getElementById('guard-overlay').style.display = 'none';
                 document.getElementById('balance').innerText = responseData.balance.toFixed(2);
                 document.getElementById('spins').innerText = responseData.spins;
@@ -393,7 +391,6 @@ if (botLink) {
             const wheel = document.getElementById('wheel');
             
             // Total segments: 6. Each segment is 60deg.
-            // Target segment rotation formula
             const targetDeg = (360 - (data.targetIndex * 60)) + 2160; 
             wheel.style.transform = `rotate(${targetDeg}deg)`;
 
@@ -420,5 +417,4 @@ if (botLink) {
 </script>
 
 </body>
-                                  </html>
-                                  
+</html>
