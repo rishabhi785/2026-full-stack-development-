@@ -52,7 +52,6 @@
         }
         .desc { color: #8c89a0; font-size: 13px; margin-bottom: 25px; }
         
-        /* Stats dashboard */
         .dashboard {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -124,13 +123,12 @@
             font-weight: 700;
             transform-origin: 50% 50%;
         }
-        /* Rotations */
-        .seg0 { transform: rotate(30deg); color: #00ff66; } /* ₹0.05 */
-        .seg1 { transform: rotate(90deg); color: #ffd700; } /* ₹1.00 */
-        .seg2 { transform: rotate(150deg); color: #ff007a; } /* ₹0.10 */
-        .seg3 { transform: rotate(210deg); color: #00f2fe; } /* ₹2.00 */
-        .seg4 { transform: rotate(270deg); color: #ff9f00; } /* ₹0.15 */
-        .seg5 { transform: rotate(330deg); color: #a1ff00; } /* ₹5.00 */
+        .seg0 { transform: rotate(30deg); color: #00ff66; }
+        .seg1 { transform: rotate(90deg); color: #ffd700; }
+        .seg2 { transform: rotate(150deg); color: #ff007a; }
+        .seg3 { transform: rotate(210deg); color: #00f2fe; }
+        .seg4 { transform: rotate(270deg); color: #ff9f00; }
+        .seg5 { transform: rotate(330deg); color: #a1ff00; }
 
         .wheel-center-cap {
             position: absolute;
@@ -172,7 +170,7 @@
         }
         .btn-spin:active { transform: translateY(2px); }
 
-        /* Security Guarded Popup (Website Lock) */
+        /* Lock Screen Overlay */
         .guard-overlay {
             position: absolute;
             top: 0; left: 0; right: 0; bottom: 0;
@@ -318,30 +316,28 @@
     let tgUser = urlParams.get('telegram_id');
     const refBy = urlParams.get('ref');
 
-    // Strict Device Verification: Don't allow session overlaps.
+    // Strict Device Verification: Do not allow cache overrides
     if (tgUser) {
         localStorage.setItem('tg_user_id', tgUser);
     } else {
         tgUser = localStorage.getItem('tg_user_id');
     }
 
-    // Set fallback simulation only if absolutely no ID exists (even in cache)
+    // Force unique simulation ID if absolutely direct visit
     if (!tgUser) {
-        tgUser = 'User_' + Math.floor(100000 + Math.random() * 900000);
+        tgUser = 'User_' + Math.floor(100000 + Math.random() * 900000) + '_' + Date.now();
         localStorage.setItem('tg_user_id', tgUser);
     }
 
     let isSpinning = false;
     let checkInterval = null;
 
-    // Build the correct Bot Link dynamically on load
+    // Generate dynamic start URLs for bot buttons
     const botLink = document.getElementById('tg-bot-btn');
     if (botLink) {
         if (refBy && !refBy.startsWith('User_')) {
-            // If visiting via a friend's referral link
             botLink.href = `https://t.me/Taskies_bot?start=ref_${refBy}`;
         } else {
-            // Direct visit, regular channel verification link
             botLink.href = `https://t.me/Taskies_bot?start=verify_${tgUser}`;
         }
     }
@@ -357,7 +353,7 @@
             const responseData = await res.json();
             
             if (responseData.is_joined) {
-                // Remove lock overlay strictly on verified response
+                // Remove overlay only if server says true
                 document.getElementById('guard-overlay').style.display = 'none';
                 document.getElementById('balance').innerText = responseData.balance.toFixed(2);
                 document.getElementById('spins').innerText = responseData.spins;
@@ -371,13 +367,11 @@
         }
     }
 
-    // Check verification status periodically
     function startCheckLoop() {
         if (checkInterval) clearInterval(checkInterval);
-        checkInterval = setInterval(authUser, 4000); // Check updates every 4 seconds
+        checkInterval = setInterval(authUser, 4000); // Verify every 4 seconds
     }
 
-    // Spin Wheel logic
     async function spinWheel() {
         if (isSpinning) return;
         
@@ -417,7 +411,6 @@
         alert('Referral link copied to clipboard!');
     }
 
-    // Load initial authentication state
     authUser();
 </script>
 
