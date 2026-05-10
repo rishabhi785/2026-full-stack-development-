@@ -1,1 +1,16 @@
+{
+  "name": "task-and-earn-spin",
+  "version": "1.0.0",
+  "description": "Telegram Guarded Spin & Earn Web App",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "sqlite3": "^5.1.7",
+    "body-parser": "^1.20.2",
+    "node-fetch": "^2.7.0"
+  }
+}
 
